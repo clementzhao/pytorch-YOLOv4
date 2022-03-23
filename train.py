@@ -208,7 +208,7 @@ class Yolo_loss(nn.Module):
             truth_box[:n, 0] = truth_x_all[b, :n]
             truth_box[:n, 1] = truth_y_all[b, :n]
 
-            pred_ious = bboxes_iou(pred[b].view(-1, 4), truth_box, xyxy=False)
+            pred_ious = bboxes_iou(pred[b].contiguous().view(-1, 4), truth_box, xyxy=False)
             pred_best_iou, _ = pred_ious.max(dim=1)
             pred_best_iou = (pred_best_iou > self.ignore_thre)
             pred_best_iou = pred_best_iou.view(pred[b].shape[:3])
@@ -296,9 +296,9 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
     n_val = len(val_dataset)
 
     train_loader = DataLoader(train_dataset, batch_size=config.batch // config.subdivisions, shuffle=True,
-                              num_workers=8, pin_memory=True, drop_last=True, collate_fn=collate)
+                              num_workers=2, pin_memory=True, drop_last=True, collate_fn=collate)
 
-    val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=8,
+    val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=2,
                             pin_memory=True, drop_last=True, collate_fn=val_collate)
 
     writer = SummaryWriter(log_dir=config.TRAIN_TENSORBOARD_DIR,
