@@ -433,7 +433,7 @@ def get_image_id(filename:str) -> int:
     #print("You could also create your own 'get_image_id' function.")
     # print(filename)
     parts = filename.split('/')
-    id = int(parts[-1][0:-4])
+    id = int(str(parts[-1][2:-4]).replace("-", "").replace("_","").replace(" ",""))
     # print(id)
     return id
 
