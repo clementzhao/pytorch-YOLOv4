@@ -534,23 +534,22 @@ def get_args(**kwargs):
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # parser.add_argument('-b', '--batch-size', metavar='B', type=int, nargs='?', default=2,
     #                     help='Batch size', dest='batchsize')
-    parser.add_argument('-l', '--learning-rate', metavar='LR', type=float, nargs='?', default=0.001,
+    parser.add_argument('-l', '--learning_rate', metavar='LR', type=float, nargs='?', default=0.001,
                         help='Learning rate', dest='learning_rate')
     parser.add_argument('-f', '--load', dest='load', type=str, default=None,
                         help='Load model from a .pth file')
-    parser.add_argument('-g', '--gpu', metavar='G', type=str, default='-1',
+    parser.add_argument('-g', '--gpu', metavar='G', type=str, default='0',
                         help='GPU', dest='gpu')
-    parser.add_argument('-dir', '--data-dir', type=str, default=None,
+    parser.add_argument('-d', '--data_dir', type=str, default=None,
                         help='dataset dir', dest='dataset_dir')
-    parser.add_argument('-pretrained', type=str, default=None, help='pretrained yolov4.conv.137')
-    parser.add_argument('-classes', type=int, default=80, help='dataset classes')
-    parser.add_argument('-train_label_path', dest='train_label', type=str, default='train.txt', help="train label path")
-    parser.add_argument(
-        '-optimizer', type=str, default='adam',
+    parser.add_argument('-p', '--pretrained',type=str, default=None, help='pretrained yolov4.conv.137')
+    parser.add_argument('-c', '--classes',type=int, default=3, help='dataset classes')
+    parser.add_argument('-t', '--train_txt',dest='train_label', type=str, default='train.txt', help="train label path")
+    parser.add_argument('-v', '--val_txt',dest='val_label', type=str, default='val.txt', help="val label path")
+    parser.add_argument('-o', '--optimizer',type=str, default='adam',
         help='training optimizer',
         dest='TRAIN_OPTIMIZER')
-    parser.add_argument(
-        '-iou-type', type=str, default='iou',
+    parser.add_argument('-i', '--iou_type', type=str, default='iou',
         help='iou type (iou, giou, diou, ciou)',
         dest='iou_type')
     parser.add_argument(
