@@ -546,6 +546,7 @@ def get_args(**kwargs):
     parser.add_argument('-c', '--classes',type=int, default=3, help='dataset classes')
     parser.add_argument('-t', '--train_txt',dest='train_label', type=str, default='train.txt', help="train label path")
     parser.add_argument('-v', '--val_txt',dest='val_label', type=str, default='val.txt', help="val label path")
+    parser.add_argument('-e', '--epochs',dest='epochs', type=str, default=1, help="epoch number")
     parser.add_argument('-o', '--optimizer',type=str, default='adam',
         help='training optimizer',
         dest='TRAIN_OPTIMIZER')
@@ -620,7 +621,7 @@ if __name__ == "__main__":
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
     model.to(device=device)
-
+    cfg.TRAIN_EPOCHS = cfg.epochs
     try:
         train(model=model,
               config=cfg,
