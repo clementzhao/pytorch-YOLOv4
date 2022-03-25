@@ -621,7 +621,7 @@ if __name__ == "__main__":
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
     model.to(device=device)
-    if isinstance(txt, str):
+    if isinstance(cfg.epochs, str):
         cfg.TRAIN_EPOCHS = int(cfg.epochs)
     else:
         cfg.TRAIN_EPOCHS = cfg.epochs
