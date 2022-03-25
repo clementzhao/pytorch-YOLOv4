@@ -540,12 +540,12 @@ def get_args(**kwargs):
                         help='Load model from a .pth file')
     parser.add_argument('-g', '--gpu', metavar='G', type=str, default='0',
                         help='GPU', dest='gpu')
-    parser.add_argument('-d', '--data_dir', type=str, default=None,
+    parser.add_argument('-d', '--data_dir', type=str, default='/opt/ml/input/data/data_dir/',
                         help='dataset dir', dest='dataset_dir')
-    parser.add_argument('-p', '--pretrained',type=str, default=None, help='pretrained yolov4.conv.137')
+    parser.add_argument('-p', '--pretrained',type=str, default='/opt/ml/input/data/pretrained/yolov4.conv.137.pth', help='pretrained yolov4.conv.137')
     parser.add_argument('-c', '--classes',type=int, default=3, help='dataset classes')
-    parser.add_argument('-t', '--train_txt',dest='train_label', type=str, default='train.txt', help="train label path")
-    parser.add_argument('-v', '--val_txt',dest='val_label', type=str, default='val.txt', help="val label path")
+    parser.add_argument('-t', '--train_txt',dest='train_label', type=str, default='/opt/ml/input/data/train_txt/train.txt', help="train label path")
+    parser.add_argument('-v', '--val_txt',dest='val_label', type=str, default='/opt/ml/input/data/val_txt/val_txt', help="val label path")
     parser.add_argument('-e', '--epochs',dest='epochs', type=str, default=1, help="epoch number")
     parser.add_argument('-o', '--optimizer',type=str, default='adam',
         help='training optimizer',
