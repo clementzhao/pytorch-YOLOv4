@@ -545,7 +545,7 @@ def get_args(**kwargs):
     parser.add_argument('-p', '--pretrained',type=str, default='/opt/ml/input/data/pretrained/yolov4.conv.137.pth', help='pretrained yolov4.conv.137')
     parser.add_argument('-c', '--classes',type=int, default=3, help='dataset classes')
     parser.add_argument('-t', '--train_txt',dest='train_label', type=str, default='/opt/ml/input/data/train_txt/train.txt', help="train label path")
-    parser.add_argument('-v', '--val_txt',dest='val_label', type=str, default='/opt/ml/input/data/val_txt/val_txt', help="val label path")
+    parser.add_argument('-v', '--val_txt',dest='val_label', type=str, default='/opt/ml/input/data/val_txt/val.txt', help="val label path")
     parser.add_argument('-e', '--epochs',dest='epochs', type=str, default=1, help="epoch number")
     parser.add_argument('-o', '--optimizer',type=str, default='adam',
         help='training optimizer',
