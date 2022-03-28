@@ -296,9 +296,9 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
     n_val = len(val_dataset)
 
     train_loader = DataLoader(train_dataset, batch_size=config.batch // config.subdivisions, shuffle=True,
-                              num_workers=2, pin_memory=True, drop_last=True, collate_fn=collate)
+                              num_workers=cfg.workers, pin_memory=True, drop_last=True, collate_fn=collate)
 
-    val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=2,
+    val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=cfg.workers,
                             pin_memory=True, drop_last=True, collate_fn=val_collate)
 
     writer = SummaryWriter(log_dir=config.TRAIN_TENSORBOARD_DIR,
@@ -546,7 +546,9 @@ def get_args(**kwargs):
     parser.add_argument('-c', '--classes',type=int, default=3, help='dataset classes')
     parser.add_argument('-t', '--train_txt',dest='train_label', type=str, default='/opt/ml/input/data/train_txt/train.txt', help="train label path")
     parser.add_argument('-v', '--val_txt',dest='val_label', type=str, default='/opt/ml/input/data/val_txt/val.txt', help="val label path")
-    parser.add_argument('-e', '--epochs',dest='epochs', type=str, default=1, help="epoch number")
+    parser.add_argument('-e', '--epochs',dest='epochs', type=int, default=1, help="epoch number")
+    parser.add_argument('-b', '--batch',dest='batch', type=int, default=32, help="batch number")
+    parser.add_argument('-w', '--workers',dest='workers', type=int, default=2, help="workers number")
     parser.add_argument('-o', '--optimizer',type=str, default='adam',
         help='training optimizer',
         dest='TRAIN_OPTIMIZER')
