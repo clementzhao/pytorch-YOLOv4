@@ -464,7 +464,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     except:
                         logging.info(f'failed to remove {model_to_remove}')
 
-    writer.close()
+    #writer.close()
 
 
 @torch.no_grad()
@@ -592,10 +592,8 @@ def init_logger(log_file=None, log_dir=None, log_level=logging.INFO, mode='w', s
     # 此处不能使用logging输出
     print('log file path:' + log_file)
 
-    logging.basicConfig(level=logging.DEBUG,
-                        format=fmt,
-                        filename=log_file,
-                        filemode=mode)
+    #logging.basicConfig(level=logging.DEBUG,format=fmt,filename=log_file,filemode=mode)
+    logging.basicConfig(level=logging.DEBUG,format=fmt)
 
     if stdout:
         console = logging.StreamHandler(stream=sys.stdout)
