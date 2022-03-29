@@ -300,10 +300,11 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
 
     val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=cfg.workers,
                             pin_memory=True, drop_last=True, collate_fn=val_collate)
-
+    '''
     writer = SummaryWriter(log_dir=config.TRAIN_TENSORBOARD_DIR,
                            filename_suffix=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}',
                            comment=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}')
+    '''
     # writer.add_images('legend',
     #                   torch.from_numpy(train_dataset.label2colorlegend2(cfg.DATA_CLASSES).transpose([2, 0, 1])).to(
     #                       device).unsqueeze(0))
@@ -389,6 +390,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     model.zero_grad()
 
                 if global_step % (log_step * config.subdivisions) == 0:
+                    '''
                     writer.add_scalar('train/Loss', loss.item(), global_step)
                     writer.add_scalar('train/loss_xy', loss_xy.item(), global_step)
                     writer.add_scalar('train/loss_wh', loss_wh.item(), global_step)
@@ -396,6 +398,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     writer.add_scalar('train/loss_cls', loss_cls.item(), global_step)
                     writer.add_scalar('train/loss_l2', loss_l2.item(), global_step)
                     writer.add_scalar('lr', scheduler.get_lr()[0] * config.batch, global_step)
+                    '''
                     pbar.set_postfix(**{'loss (batch)': loss.item(), 'loss_xy': loss_xy.item(),
                                         'loss_wh': loss_wh.item(),
                                         'loss_obj': loss_obj.item(),
@@ -403,7 +406,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                                         'loss_l2': loss_l2.item(),
                                         'lr': scheduler.get_lr()[0] * config.batch
                                         })
-                    logging.debug('Train step_{}: loss : {},loss xy : {},loss wh : {},'
+                    logging.info('Train step_{}: loss : {},loss xy : {},loss wh : {},'
                                   'loss obj : {}，loss cls : {},loss l2 : {},lr : {}'
                                   .format(global_step, loss.item(), loss_xy.item(),
                                           loss_wh.item(), loss_obj.item(),
@@ -426,6 +429,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
             del eval_model
 
             stats = evaluator.coco_eval['bbox'].stats
+            '''
             writer.add_scalar('train/AP', stats[0], global_step)
             writer.add_scalar('train/AP50', stats[1], global_step)
             writer.add_scalar('train/AP75', stats[2], global_step)
@@ -438,7 +442,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
             writer.add_scalar('train/AR_small', stats[9], global_step)
             writer.add_scalar('train/AR_medium', stats[10], global_step)
             writer.add_scalar('train/AR_large', stats[11], global_step)
-
+            '''
             if save_cp:
                 try:
                     # os.mkdir(config.checkpoints)
