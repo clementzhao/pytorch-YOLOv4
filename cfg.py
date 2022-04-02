@@ -76,7 +76,8 @@ elif Cfg.mosaic:
 
 #Cfg.checkpoints = os.path.join(_BASE_DIR, 'checkpoints')
 Cfg.checkpoints = os.environ['SM_MODEL_DIR']
-Cfg.TRAIN_TENSORBOARD_DIR = os.path.join(_BASE_DIR, 'log')
+#Cfg.TRAIN_TENSORBOARD_DIR = os.path.join(_BASE_DIR, 'log')
+Cfg.TRAIN_TENSORBOARD_DIR = os.environ['SM_OUTPUT_DATA_DIR']
 
 Cfg.iou_type = 'iou'  # 'giou', 'diou', 'ciou'
 

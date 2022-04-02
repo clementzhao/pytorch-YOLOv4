@@ -300,11 +300,9 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
 
     val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=cfg.workers,
                             pin_memory=True, drop_last=True, collate_fn=val_collate)
-    '''
     writer = SummaryWriter(log_dir=config.TRAIN_TENSORBOARD_DIR,
                            filename_suffix=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}',
                            comment=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}')
-    '''
     # writer.add_images('legend',
     #                   torch.from_numpy(train_dataset.label2colorlegend2(cfg.DATA_CLASSES).transpose([2, 0, 1])).to(
     #                       device).unsqueeze(0))
@@ -383,14 +381,13 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                 loss.backward()
 
                 epoch_loss += loss.item()
-
                 if global_step % config.subdivisions == 0:
                     optimizer.step()
                     scheduler.step()
                     model.zero_grad()
 
                 if global_step % (log_step * config.subdivisions) == 0:
-                    '''
+
                     writer.add_scalar('train/Loss', loss.item(), global_step)
                     writer.add_scalar('train/loss_xy', loss_xy.item(), global_step)
                     writer.add_scalar('train/loss_wh', loss_wh.item(), global_step)
@@ -398,7 +395,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     writer.add_scalar('train/loss_cls', loss_cls.item(), global_step)
                     writer.add_scalar('train/loss_l2', loss_l2.item(), global_step)
                     writer.add_scalar('lr', scheduler.get_lr()[0] * config.batch, global_step)
-                    '''
+
                     pbar.set_postfix(**{'loss (batch)': loss.item(), 'loss_xy': loss_xy.item(),
                                         'loss_wh': loss_wh.item(),
                                         'loss_obj': loss_obj.item(),
@@ -406,15 +403,14 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                                         'loss_l2': loss_l2.item(),
                                         'lr': scheduler.get_lr()[0] * config.batch
                                         })
-                    print('Train step_{}: loss : {},loss xy : {},loss wh : {},'
+                    logging.info('Train step_{}: loss : {},loss xy : {},loss wh : {},'
                                   'loss obj : {}，loss cls : {},loss l2 : {},lr : {}'
                                   .format(global_step, loss.item(), loss_xy.item(),
                                           loss_wh.item(), loss_obj.item(),
                                           loss_cls.item(), loss_l2.item(),
                                           scheduler.get_lr()[0] * config.batch))
-
                 pbar.update(images.shape[0])
-
+            logging.info(f'epoch loss : {epoch_loss/epoch_step},')
             if cfg.use_darknet_cfg:
                 eval_model = Darknet(cfg.cfgfile, inference=True)
             else:
@@ -429,7 +425,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
             del eval_model
 
             stats = evaluator.coco_eval['bbox'].stats
-            '''
+
             writer.add_scalar('train/AP', stats[0], global_step)
             writer.add_scalar('train/AP50', stats[1], global_step)
             writer.add_scalar('train/AP75', stats[2], global_step)
@@ -442,7 +438,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
             writer.add_scalar('train/AR_small', stats[9], global_step)
             writer.add_scalar('train/AR_medium', stats[10], global_step)
             writer.add_scalar('train/AR_large', stats[11], global_step)
-            '''
+
             if save_cp:
                 try:
                     # os.mkdir(config.checkpoints)
@@ -464,7 +460,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     except:
                         logging.info(f'failed to remove {model_to_remove}')
 
-    #writer.close()
+    writer.close()
 
 
 @torch.no_grad()
@@ -572,7 +568,7 @@ def get_args(**kwargs):
     return edict(cfg)
 
 
-def init_logger(log_file=None, log_dir=None, log_level=logging.INFO, mode='w', stdout=True):
+def init_logger(log_file=None, log_dir=None, log_level=logging.DEBUG, mode='w', stdout=True):
     """
     log_dir: 日志文件的文件夹路径
     mode: 'a', append; 'w', 覆盖原文件写入.
@@ -592,8 +588,8 @@ def init_logger(log_file=None, log_dir=None, log_level=logging.INFO, mode='w', s
     # 此处不能使用logging输出
     print('log file path:' + log_file)
 
-    #logging.basicConfig(level=logging.DEBUG,format=fmt,filename=log_file,filemode=mode)
-    logging.basicConfig(level=logging.DEBUG,format=fmt)
+    logging.basicConfig(level=logging.DEBUG,format=fmt,filename=log_file,filemode=mode)
+    #logging.basicConfig(level=logging.DEBUG,format=fmt)
 
     if stdout:
         console = logging.StreamHandler(stream=sys.stdout)
@@ -611,7 +607,8 @@ def _get_date_str():
 
 
 if __name__ == "__main__":
-    logging = init_logger(log_dir='log')
+    log_dir = os.environ['SM_OUTPUT_DATA_DIR']
+    logging = init_logger(log_dir=log_dir)
     cfg = get_args(**Cfg)
     os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpu
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
