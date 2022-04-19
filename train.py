@@ -610,7 +610,8 @@ if __name__ == "__main__":
     log_dir = os.environ['SM_OUTPUT_DATA_DIR']
     logging = init_logger(log_dir=log_dir)
     cfg = get_args(**Cfg)
-    os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpu
+    #os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpu
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
 
