@@ -621,7 +621,9 @@ if __name__ == "__main__":
         model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
 
     if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
+        logging.info(f'Using multi GPU')
+        device_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+        model = torch.nn.DataParallel(model, device_ids=device_ids)
     model.to(device=device)
     if isinstance(cfg.epochs, str):
         cfg.TRAIN_EPOCHS = int(cfg.epochs)
