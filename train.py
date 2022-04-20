@@ -538,7 +538,7 @@ def get_args(**kwargs):
                         help='Learning rate', dest='learning_rate')
     parser.add_argument('-f', '--load', dest='load', type=str, default=None,
                         help='Load model from a .pth file')
-    parser.add_argument('-g', '--gpu', metavar='G', type=str, default='0',
+    parser.add_argument('-g', '--gpu', metavar='G', type=int, default=0,
                         help='GPU', dest='gpu')
     parser.add_argument('-d', '--data_dir', type=str, default='/opt/ml/input/data/data_dir/',
                         help='dataset dir', dest='dataset_dir')
@@ -610,8 +610,10 @@ if __name__ == "__main__":
     log_dir = os.environ['SM_OUTPUT_DATA_DIR']
     logging = init_logger(log_dir=log_dir)
     cfg = get_args(**Cfg)
-    #os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpu
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+    if cfg.gpu > 1:
+        gpu_devices = ','.join([str(id) for id in range(cfg.gpu)])
+        os.environ['CUDA_VISIBLE_DEVICES'] = gpu_devices
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
 
@@ -621,14 +623,12 @@ if __name__ == "__main__":
         model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
 
     if torch.cuda.device_count() > 1:
-        logging.info(f'Using multi GPU')
-        device_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+        logging.info(f'Using multi GPU num: {cfg.gpu}')
+        device_ids = [id for id in range(cfg.gpu)]
         model = torch.nn.DataParallel(model, device_ids=device_ids)
     model.to(device=device)
-    if isinstance(cfg.epochs, str):
-        cfg.TRAIN_EPOCHS = int(cfg.epochs)
-    else:
-        cfg.TRAIN_EPOCHS = cfg.epochs
+    cfg.TRAIN_EPOCHS = cfg.epochs
+    
     try:
         train(model=model,
               config=cfg,
