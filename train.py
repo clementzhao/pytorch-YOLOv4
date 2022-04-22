@@ -37,6 +37,13 @@ from tool.tv_reference.utils import collate_fn as val_collate
 from tool.tv_reference.coco_utils import convert_to_coco_api
 from tool.tv_reference.coco_eval import CocoEvaluator
 
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
+import os
+import json
+import torch.multiprocessing as mp
+
 
 def bboxes_iou(bboxes_a, bboxes_b, xyxy=True, GIoU=False, DIoU=False, CIoU=False):
     """Calculate the Intersection of Unions (IoUs) between bounding boxes.
@@ -288,26 +295,74 @@ def collate(batch):
     return images, bboxes
 
 
-def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=20, img_scale=0.5):
+master = json.loads(os.environ['SM_TRAINING_ENV'])['master_hostname']
+os.environ['MASTER_ADDR'] = master #args.hosts[0]
+os.environ['MASTER_PORT'] = '23456'
+world_size = 0
+rank = 0
+
+#def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=20, img_scale=0.5):
+def train(pid, config):
+    global world_size, rank, logging, log_dir
+
+    epochs = config.epochs
+    save_cp = True
+    log_step = 20
+
+    hosts = json.loads(os.environ['SM_HOSTS'])
+    world_size = len(hosts) * config.gpu
+    os.environ['WORLD_SIZE'] = str(world_size)
+
+    rank = hosts.index(os.environ['SM_CURRENT_HOST']) * config.gpu + pid
+    os.environ['RANK'] = str(rank)
+    dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=world_size)
+    torch.cuda.set_device(pid)
+
+    config.batch //= world_size
+    config.batch = max(config.batch, 1)
+    logging.info(f"world_size:{world_size},rank={rank},local_rank={pid},batch={config.batch},master={master}")
+
+    config.TRAIN_EPOCHS = config.epochs
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info(f'Using device {device}')
+
+    if config.use_darknet_cfg:
+        model = Darknet(config.cfgfile)
+    else:
+        model = Yolov4(config.pretrained, n_classes=config.classes)
+
+    model = model.to(device)
+    model = DDP(model, device_ids=[pid], output_device=pid)
+    model.cuda(pid)
+
+
     train_dataset = Yolo_dataset(config.train_label, config, train=True)
     val_dataset = Yolo_dataset(config.val_label, config, train=False)
 
     n_train = len(train_dataset)
     n_val = len(val_dataset)
 
-    train_loader = DataLoader(train_dataset, batch_size=config.batch // config.subdivisions, shuffle=True,
-                              num_workers=cfg.workers, pin_memory=True, drop_last=True, collate_fn=collate)
-
-    val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=cfg.workers,
+    train_sampler = DistributedSampler(train_dataset)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=config.batch // config.subdivisions,
+        shuffle=False,
+        num_workers=config.workers,
+        pin_memory=True,
+        sampler=train_sampler,
+        drop_last=True, collate_fn=collate)
+    #train_loader = DataLoader(train_dataset, batch_size=config.batch // config.subdivisions, shuffle=True,
+    #                          num_workers=config.workers, pin_memory=True, drop_last=True, collate_fn=collate)
+    if rank == 0:
+        val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=config.workers,
                             pin_memory=True, drop_last=True, collate_fn=val_collate)
     writer = SummaryWriter(log_dir=config.TRAIN_TENSORBOARD_DIR,
                            filename_suffix=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}',
                            comment=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}')
-    # writer.add_images('legend',
-    #                   torch.from_numpy(train_dataset.label2colorlegend2(cfg.DATA_CLASSES).transpose([2, 0, 1])).to(
-    #                       device).unsqueeze(0))
-    max_itr = config.TRAIN_EPOCHS * n_train
-    # global_step = cfg.TRAIN_MINEPOCH * n_train
+
+    max_itr = epochs * n_train
+    # global_step = config.TRAIN_MINEPOCH * n_train
     global_step = 0
     logging.info(f'''Starting training:
         Epochs:          {epochs}
@@ -386,7 +441,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     scheduler.step()
                     model.zero_grad()
 
-                if global_step % (log_step * config.subdivisions) == 0:
+                if global_step % (log_step * config.subdivisions) == 0 and rank == 0:
 
                     writer.add_scalar('train/Loss', loss.item(), global_step)
                     writer.add_scalar('train/loss_xy', loss_xy.item(), global_step)
@@ -410,36 +465,37 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                                           loss_cls.item(), loss_l2.item(),
                                           scheduler.get_lr()[0] * config.batch))
                 pbar.update(images.shape[0])
-            logging.info(f'epoch loss : {epoch_loss/epoch_step},')
-            if cfg.use_darknet_cfg:
-                eval_model = Darknet(cfg.cfgfile, inference=True)
-            else:
-                eval_model = Yolov4(cfg.pretrained, n_classes=cfg.classes, inference=True)
-            # eval_model = Yolov4(yolov4conv137weight=None, n_classes=config.classes, inference=True)
-            if torch.cuda.device_count() > 1:
+            
+            if rank == 0:
+                logging.info(f'epoch loss : {epoch_loss/epoch_step},')
+
+                if config.use_darknet_cfg:
+                    eval_model = Darknet(config.cfgfile, inference=True)
+                else:
+                    eval_model = Yolov4(config.pretrained, n_classes=config.classes, inference=True)
+
                 eval_model.load_state_dict(model.module.state_dict())
-            else:
-                eval_model.load_state_dict(model.state_dict())
-            eval_model.to(device)
-            evaluator = evaluate(eval_model, val_loader, config, device)
-            del eval_model
 
-            stats = evaluator.coco_eval['bbox'].stats
+                eval_model.to(device)
+                evaluator = evaluate(eval_model, val_loader, config, device)
+                del eval_model
 
-            writer.add_scalar('train/AP', stats[0], global_step)
-            writer.add_scalar('train/AP50', stats[1], global_step)
-            writer.add_scalar('train/AP75', stats[2], global_step)
-            writer.add_scalar('train/AP_small', stats[3], global_step)
-            writer.add_scalar('train/AP_medium', stats[4], global_step)
-            writer.add_scalar('train/AP_large', stats[5], global_step)
-            writer.add_scalar('train/AR1', stats[6], global_step)
-            writer.add_scalar('train/AR10', stats[7], global_step)
-            writer.add_scalar('train/AR100', stats[8], global_step)
-            writer.add_scalar('train/AR_small', stats[9], global_step)
-            writer.add_scalar('train/AR_medium', stats[10], global_step)
-            writer.add_scalar('train/AR_large', stats[11], global_step)
+                stats = evaluator.coco_eval['bbox'].stats
 
-            if save_cp:
+                writer.add_scalar('train/AP', stats[0], global_step)
+                writer.add_scalar('train/AP50', stats[1], global_step)
+                writer.add_scalar('train/AP75', stats[2], global_step)
+                writer.add_scalar('train/AP_small', stats[3], global_step)
+                writer.add_scalar('train/AP_medium', stats[4], global_step)
+                writer.add_scalar('train/AP_large', stats[5], global_step)
+                writer.add_scalar('train/AR1', stats[6], global_step)
+                writer.add_scalar('train/AR10', stats[7], global_step)
+                writer.add_scalar('train/AR100', stats[8], global_step)
+                writer.add_scalar('train/AR_small', stats[9], global_step)
+                writer.add_scalar('train/AR_medium', stats[10], global_step)
+                writer.add_scalar('train/AR_large', stats[11], global_step)
+
+            if save_cp and rank == 0:
                 try:
                     # os.mkdir(config.checkpoints)
                     os.makedirs(config.checkpoints, exist_ok=True)
@@ -447,11 +503,9 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                 except OSError:
                     pass
                 save_path = os.path.join(config.checkpoints, f'{save_prefix}{epoch + 1}.pth')
-                if isinstance(model, torch.nn.DataParallel):
-                    torch.save(model.moduel,state_dict(), save_path)
-                else:
-                    torch.save(model.state_dict(), save_path)
+                torch.save(model.moduel, state_dict(), save_path)
                 logging.info(f'Checkpoint {epoch + 1} saved !')
+                
                 saved_models.append(save_path)
                 if len(saved_models) > config.keep_checkpoint_max > 0:
                     model_to_remove = saved_models.popleft()
@@ -538,7 +592,7 @@ def get_args(**kwargs):
                         help='Learning rate', dest='learning_rate')
     parser.add_argument('-f', '--load', dest='load', type=str, default=None,
                         help='Load model from a .pth file')
-    parser.add_argument('-g', '--gpu', metavar='G', type=int, default=0,
+    parser.add_argument('-g', '--gpu', metavar='G', type=int, default=os.environ['SM_NUM_GPUS'],
                         help='GPU', dest='gpu')
     parser.add_argument('-d', '--data_dir', type=str, default='/opt/ml/input/data/data_dir/',
                         help='dataset dir', dest='dataset_dir')
@@ -549,6 +603,7 @@ def get_args(**kwargs):
     parser.add_argument('-e', '--epochs',dest='epochs', type=int, default=1, help="epoch number")
     parser.add_argument('-b', '--batch',dest='batch', type=int, default=32, help="batch number")
     parser.add_argument('-w', '--workers',dest='workers', type=int, default=2, help="workers number")
+    parser.add_argument('-s', '--subdivisions',dest='subdivisions', type=int, default=16, help="subdivisions number")
     parser.add_argument('-o', '--optimizer',type=str, default='adam',
         help='training optimizer',
         dest='TRAIN_OPTIMIZER')
@@ -605,35 +660,20 @@ def _get_date_str():
     now = datetime.datetime.now()
     return now.strftime('%Y-%m-%d_%H-%M')
 
+log_dir = os.environ['SM_OUTPUT_DATA_DIR']
+logging = init_logger(log_dir=log_dir)
 
 if __name__ == "__main__":
-    log_dir = os.environ['SM_OUTPUT_DATA_DIR']
-    logging = init_logger(log_dir=log_dir)
     cfg = get_args(**Cfg)
-    if cfg.gpu > 1:
-        gpu_devices = ','.join([str(id) for id in range(cfg.gpu)])
-        os.environ['CUDA_VISIBLE_DEVICES'] = gpu_devices
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Using device {device}')
-
-    if cfg.use_darknet_cfg:
-        model = Darknet(cfg.cfgfile)
+    if cfg.gpu == 0:
+        nprocs = 1
     else:
-        model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
+        nprocs = cfg.gpu
 
-    if torch.cuda.device_count() > 1:
-        logging.info(f'Using multi GPU num: {cfg.gpu}')
-        device_ids = [id for id in range(cfg.gpu)]
-        model = torch.nn.DataParallel(model, device_ids=device_ids)
-    model.to(device=device)
-    cfg.TRAIN_EPOCHS = cfg.epochs
-    
     try:
-        train(model=model,
-              config=cfg,
-              epochs=cfg.TRAIN_EPOCHS,
-              device=device, )
+        #train(model=model,config=cfg,epochs=cfg.TRAIN_EPOCHS,device=device,)
+        mp.spawn(train, nprocs=nprocs, args=(cfg,), join=True, daemon=False)
     except KeyboardInterrupt:
         if isinstance(model, torch.nn.DataParallel):
             torch.save(model.module.state_dict(), 'INTERRUPTED.pth')
