@@ -361,6 +361,12 @@ def train(pid, config):
                            filename_suffix=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}',
                            comment=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}')
 
+    config.max_batches = int(epochs* len(train_loader.dataset)/config.batch)
+    step0 = int(config.max_batches * 0.8)
+    step1 = int(config.max_batches * 0.9)
+    config.steps = [step0, step1]
+    config.policy = config.steps
+    
     max_itr = epochs * n_train
     # global_step = config.TRAIN_MINEPOCH * n_train
     global_step = 0
