@@ -302,7 +302,7 @@ world_size = 0
 rank = 0
 
 #def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=20, img_scale=0.5):
-def train(pid, config):
+def train(local_rank, config):
     global world_size, rank, logging, log_dir
 
     epochs = config.epochs
@@ -313,14 +313,14 @@ def train(pid, config):
     world_size = len(hosts) * config.gpu
     os.environ['WORLD_SIZE'] = str(world_size)
 
-    rank = hosts.index(os.environ['SM_CURRENT_HOST']) * config.gpu + pid
+    rank = hosts.index(os.environ['SM_CURRENT_HOST']) * config.gpu + local_rank
     os.environ['RANK'] = str(rank)
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=world_size)
-    torch.cuda.set_device(pid)
+    torch.cuda.set_device(local_rank)
 
     config.batch //= world_size
     config.batch = max(config.batch, 1)
-    logging.info(f"world_size:{world_size},rank={rank},local_rank={pid},batch={config.batch},master={master}")
+    logging.info(f"world_size:{world_size},rank={rank},local_rank={local_rank},batch={config.batch},master={master}")
 
     config.TRAIN_EPOCHS = config.epochs
 
@@ -333,8 +333,8 @@ def train(pid, config):
         model = Yolov4(config.pretrained, n_classes=config.classes)
 
     model = model.to(device)
-    model = DDP(model, device_ids=[pid], output_device=pid)
-    model.cuda(pid)
+    model = DDP(model, device_ids=[local_rank], output_device=local_rank)
+    model.cuda(local_rank)
 
 
     train_dataset = Yolo_dataset(config.train_label, config, train=True)
@@ -357,7 +357,7 @@ def train(pid, config):
     if rank == 0:
         val_loader = DataLoader(val_dataset, batch_size=config.batch // config.subdivisions, shuffle=True, num_workers=config.workers,
                             pin_memory=True, drop_last=True, collate_fn=val_collate)
-    writer = SummaryWriter(log_dir=config.TRAIN_TENSORBOARD_DIR,
+        writer = SummaryWriter(log_dir=config.TRAIN_TENSORBOARD_DIR,
                            filename_suffix=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}',
                            comment=f'OPT_{config.TRAIN_OPTIMIZER}_LR_{config.learning_rate}_BS_{config.batch}_Sub_{config.subdivisions}_Size_{config.width}')
 
@@ -422,7 +422,6 @@ def train(pid, config):
     saved_models = deque()
     model.train()
     for epoch in range(epochs):
-        # model.train()
         epoch_loss = 0
         epoch_step = 0
 
@@ -472,6 +471,10 @@ def train(pid, config):
                                           scheduler.get_lr()[0] * config.batch))
                 pbar.update(images.shape[0])
             
+            # Use a barrier() to make sure that process 1 loads the model after process
+            # 0 saves it.
+            #dist.barrier()
+            
             if rank == 0:
                 logging.info(f'epoch loss : {epoch_loss/epoch_step},')
 
@@ -500,7 +503,7 @@ def train(pid, config):
                 writer.add_scalar('train/AR_small', stats[9], global_step)
                 writer.add_scalar('train/AR_medium', stats[10], global_step)
                 writer.add_scalar('train/AR_large', stats[11], global_step)
-
+            
             if save_cp and rank == 0:
                 try:
                     # os.mkdir(config.checkpoints)
@@ -509,7 +512,8 @@ def train(pid, config):
                 except OSError:
                     pass
                 save_path = os.path.join(config.checkpoints, f'{save_prefix}{epoch + 1}.pth')
-                torch.save(model.moduel, state_dict(), save_path)
+                #torch.save(model.moduel, state_dict(), save_path)
+                torch.save(model.state_dict(), save_path)
                 logging.info(f'Checkpoint {epoch + 1} saved !')
                 
                 saved_models.append(save_path)
@@ -519,8 +523,9 @@ def train(pid, config):
                         os.remove(model_to_remove)
                     except:
                         logging.info(f'failed to remove {model_to_remove}')
-
-    writer.close()
+    if rank == 0:
+        writer.close()
+    logging.info(f'Train exit!')
 
 
 @torch.no_grad()
@@ -672,20 +677,24 @@ logging = init_logger(log_dir=log_dir)
 if __name__ == "__main__":
     cfg = get_args(**Cfg)
 
-    if cfg.gpu == 0:
-        nprocs = 1
-    else:
-        nprocs = cfg.gpu
+    world_size = len(json.loads(os.environ['SM_HOSTS'])) * cfg.gpu
 
+    #processes = []
     try:
-        #train(model=model,config=cfg,epochs=cfg.TRAIN_EPOCHS,device=device,)
-        mp.spawn(train, nprocs=nprocs, args=(cfg,), join=True, daemon=False)
-    except KeyboardInterrupt:
-        if isinstance(model, torch.nn.DataParallel):
-            torch.save(model.module.state_dict(), 'INTERRUPTED.pth')
+        if world_size > 1:
+            mp.spawn(train, nprocs=cfg.gpu, args=(cfg,), join=True, daemon=False)
         else:
-            torch.save(model.state_dict(), 'INTERRUPTED.pth')
-        logging.info('Saved interrupt')
+            train(0, cfg)
+        '''
+        for local_rank in range(cfg.gpu):
+            p = mp.Process(target=train, args=(local_rank, cfg))
+            p.start()
+            processes.append(p)
+        for p in processes:
+            p.join()
+        '''
+    except Exception as e:
+        print(e)
         try:
             sys.exit(0)
         except SystemExit:
