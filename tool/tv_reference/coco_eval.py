@@ -170,8 +170,10 @@ def convert_to_xywh(boxes, fmt='voc'):
 
 
 def merge(img_ids, eval_imgs):
-    all_img_ids = utils.all_gather(img_ids)
-    all_eval_imgs = utils.all_gather(eval_imgs)
+    #all_img_ids = utils.all_gather(img_ids)
+    #all_eval_imgs = utils.all_gather(eval_imgs)
+    all_img_ids = [img_ids]
+    all_eval_imgs = [eval_imgs]
 
     merged_img_ids = []
     for p in all_img_ids:
